@@ -5,7 +5,7 @@ OBJS = test.o ../fcache_count.o
 
 all: test
 
-%.o: %.c
+%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 test: $(OBJS)
