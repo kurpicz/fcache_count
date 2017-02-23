@@ -1,4 +1,4 @@
-CXXFLAGS = -std=c++17 -I..
+CXXFLAGS = -std=c++17 -I.. -pthread
 LDFLAGS =
 LIBS = -ldl
 OBJS = test.o ../fcache_count.o

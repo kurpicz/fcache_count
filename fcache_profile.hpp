@@ -11,6 +11,7 @@ class fcache_profile {
 public:
   fcache_profile(const std::string& file_path) {
     log_file_ = fopen(file_path.c_str(), "w");
+    fcache_count_set_callback(fcache_profile::static_log, this);
   }
 
   ~fcache_profile() {
