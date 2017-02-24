@@ -3,8 +3,8 @@
  *
  * Some parts are copied (and modified) from https://github.com/feh/nocache
  *
- * Copyright (C) 2011 Julius Plenz <julius@plenz.com>
- * Copyright (C) 2017 Florian Kurpicz <florian.kurpicz@tu-dortmund.de>
+ * Copyright (c) 2011 Julius Plenz <julius@plenz.com>
+ * Copyright (c) 2017 Florian Kurpicz <florian.kurpicz@tu-dortmund.de>
  *
  * All rights reserved. Published under the BSD-2 license in the LICENSE file.
  ******************************************************************************/
@@ -24,6 +24,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <unordered_map>
 
 #include "fcache_count.hpp"
 
@@ -146,12 +147,12 @@ void init_mutexes() {
     int i;
     pthread_mutex_init(&fds_iter_lock, nullptr);
     pthread_mutex_lock(&fds_iter_lock);
-    fds_lock = static_cast<pthread_mutex_t*>(malloc(max_fds * sizeof(*fds_lock)));
+    fds_lock = static_cast<pthread_mutex_t*>(
+      malloc(max_fds * sizeof(*fds_lock)));
     for(i = 0; i < max_fds; i++) {
         pthread_mutex_init(&fds_lock[i], nullptr);
     }
     pthread_mutex_unlock(&fds_iter_lock);
-    /* make sure to re-initialize mutex if forked */
     pthread_atfork(nullptr, nullptr, init_mutexes);
 }
 
@@ -375,7 +376,7 @@ file_pageinfo* fd_get_pageinfo(int fd, struct file_pageinfo *pi) {
 
 void free_br_list(struct byterange **br) {
   struct byterange *tmp;
-  while(*br != nullptr) {
+  while (*br != nullptr) {
     tmp = *br;
     (*br) = tmp->next;
     free(tmp);
@@ -383,20 +384,10 @@ void free_br_list(struct byterange **br) {
   *br = nullptr;
 }
 
-void store_pageinfo(int fd) {
+void lock_mutex(int fd, sigset_t* old_mask) {
   sigset_t mask;
-  sigset_t old_mask;
-
-  if (fd >= max_fds) {
-    return;
-  }
-
-  /* We might know something about this fd already, so assume we have missed
-   * it being closed. */
-  free_unclaimed_pages(fd);
-
   sigfillset(&mask);
-  sigprocmask(SIG_BLOCK, &mask, &old_mask);
+  sigprocmask(SIG_BLOCK, &mask, old_mask);
 
   pthread_mutex_lock(&fds_iter_lock);
   if (fds_lock == nullptr) {
@@ -405,6 +396,24 @@ void store_pageinfo(int fd) {
   }
   pthread_mutex_lock(&fds_lock[fd]);
   pthread_mutex_unlock(&fds_iter_lock);
+}
+
+void unlock_mutex(int fd, sigset_t* old_mask) {
+  pthread_mutex_unlock(&fds_lock[fd]);
+  sigprocmask(SIG_SETMASK, old_mask, nullptr);
+}
+
+void store_pageinfo(int fd) {
+  if (fd >= max_fds) {
+    return;
+  }
+
+  /* We might know something about this fd already, so assume we have missed
+   * it being closed. */
+  free_unclaimed_pages(fd);
+
+  sigset_t old_mask;
+  lock_mutex(fd, &old_mask);
 
   /* Hint we'll be using this file only once;
    * the Linux kernel will currently ignore this */
@@ -413,48 +422,35 @@ void store_pageinfo(int fd) {
   fds[fd].fd = fd;
   if (!fd_get_pageinfo(fd, &fds[fd])) {
     fds[fd].fd = -1;
-    goto out;
+  } else {
+    fprintf(stderr, "store_pageinfo(fd=%d): pages in cache: %zd/%zd (%.1f%%)  [filesize=%.1fK, "
+      "pagesize=%dK]\n", fd, fds[fd].nr_pages_cached, fds[fd].nr_pages,
+      fds[fd].nr_pages == 0 ? 0 : (100.0 * fds[fd].nr_pages_cached / fds[fd].nr_pages),
+      1.0 * fds[fd].size / 1024, (int) PAGESIZE / 1024);
   }
-
-  fprintf(stderr, "store_pageinfo(fd=%d): pages in cache: %zd/%zd (%.1f%%)  [filesize=%.1fK, "
-    "pagesize=%dK]\n", fd, fds[fd].nr_pages_cached, fds[fd].nr_pages,
-    fds[fd].nr_pages == 0 ? 0 : (100.0 * fds[fd].nr_pages_cached / fds[fd].nr_pages),
-    1.0 * fds[fd].size / 1024, (int) PAGESIZE / 1024);
-
-  out:
-  pthread_mutex_unlock(&fds_lock[fd]);
-  sigprocmask(SIG_SETMASK, &old_mask, NULL);
-
-  return;
+  unlock_mutex(fd, &old_mask);
 }
 
 void free_unclaimed_pages(int fd) {
   struct stat st;
-  sigset_t mask, old_mask;
 
   if (fd == -1 || fd >= max_fds) {
     return;
   }
 
-  sigfillset(&mask);
-  sigprocmask(SIG_BLOCK, &mask, &old_mask);
-
-  pthread_mutex_lock(&fds_iter_lock);
-  if (fds_lock == NULL) {
-    pthread_mutex_unlock(&fds_iter_lock);
-    return;
-  }
-  pthread_mutex_lock(&fds_lock[fd]);
-  pthread_mutex_unlock(&fds_iter_lock);
+  sigset_t old_mask;
+  lock_mutex(fd, &old_mask);
 
   if (fds[fd].fd == -1) {
-    goto out;
+    unlock_mutex(fd, &old_mask);
+    return;
   }
 
   // sync_if_writable(fd);
 
   if(fstat(fd, &st) == -1) {
-    goto out;
+    unlock_mutex(fd, &old_mask);
+    return;
   }
 
   struct byterange *br;
@@ -470,7 +466,7 @@ void free_unclaimed_pages(int fd) {
   free_br_list(&fds[fd].unmapped);
   fds[fd].fd = -1;
 
-  out:
-  pthread_mutex_unlock(&fds_lock[fd]);
-  sigprocmask(SIG_SETMASK, &old_mask, NULL);
+  unlock_mutex(fd, &old_mask);
 }
+
+/******************************************************************************/

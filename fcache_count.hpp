@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * fcache_count.cpp
+ *
+ * Some parts are copied (and modified) from https://github.com/feh/nocache
+ *
+ * Copyright (c) 2011 Julius Plenz <julius@plenz.com>
+ * Copyright (c) 2017 Florian Kurpicz <florian.kurpicz@tu-dortmund.de>
+ *
+ * All rights reserved. Published under the BSD-2 license in the LICENSE file.
+ ******************************************************************************/
+
 #ifndef FCACHE_COUNT_HEADER
 #define FCACHE_COUNT_HEADER
 
@@ -28,3 +39,5 @@ void store_pageinfo(int fd);
 void free_unclaimed_pages(int fd);
 
 #endif // FCACHE_COUNT_HEADER
+
+/******************************************************************************/
