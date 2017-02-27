@@ -28,11 +28,13 @@
 
 #include "fcache_count.hpp"
 
-static fcache_count_callback_type callback = nullptr;
-static void* callback_profile = nullptr;
+static fcache_count_log_callback_type log_callback = nullptr;
+static fcache_count_register_fd_callback_type register_fd_callback = nullptr;
+static void* log_callback_profile = nullptr;
+static void* register_fd_callback_profile = nullptr;
 
 static int max_fds;
-static struct file_pageinfo *fds;
+static struct file_pageinfo* fds;
 static size_t PAGESIZE;
 
 using open_create_type = int (*)(const char *, int, mode_t);
@@ -156,41 +158,53 @@ void init_mutexes() {
     pthread_atfork(nullptr, nullptr, init_mutexes);
 }
 
-int open(const char *path_name, int flags, mode_t mode) {
+int open(const char* path_name, int flags, mode_t mode) {
   if(!original_open) {
     original_open = (open_create_type)(dlsym(RTLD_NEXT, "open"));
   }
   int fd = original_open(path_name, flags, mode);
+  if (register_fd_callback) {
+          register_fd_callback(register_fd_callback_profile, fd, path_name);
+        }
   store_pageinfo(fd);
   return fd;
 }
 
-int open64(const char *path_name, int flags, mode_t mode) {
+int open64(const char* path_name, int flags, mode_t mode) {
   if (!original_open64) {
     original_open64 = (open_create_type)(dlsym(RTLD_NEXT, "open64"));
   }
   int fd = original_open64(path_name, flags, mode);
+  if (register_fd_callback) {
+    register_fd_callback(register_fd_callback_profile, fd, path_name);
+  }
   store_pageinfo(fd);
   return fd;
 }
 
-int creat(const char *path_name, int flags, mode_t mode) {
+int creat(const char* path_name, int flags, mode_t mode) {
   if (!original_creat) {
     original_creat = (open_create_type)(dlsym(RTLD_NEXT, "creat"));
   }
   int fd = original_creat(path_name, flags, mode);
+  if (register_fd_callback) {
+    register_fd_callback(register_fd_callback_profile, fd, path_name);
+  }
   return fd;
 }
 
-int creat64(const char *path_name, int flags, mode_t mode) {
+int creat64(const char* path_name, int flags, mode_t mode) {
   if (!original_creat64) {
     original_creat64 = (open_create_type)(dlsym(RTLD_NEXT, "creat64"));
   }
   int fd = original_creat64(path_name, flags, mode);
+  if (register_fd_callback) {
+    register_fd_callback(register_fd_callback_profile, fd, path_name);
+  }
   return fd;
 }
 
-int openat(int dir_fd, const char *path_name, int flags, mode_t mode) {
+int openat(int dir_fd, const char* path_name, int flags, mode_t mode) {
   if(!original_openat) {
     original_openat = (open_at_type)(dlsym(RTLD_NEXT, "openat"));
   }
@@ -198,7 +212,7 @@ int openat(int dir_fd, const char *path_name, int flags, mode_t mode) {
   return fd;
 }
 
-int openat64(int dir_fd, const char *path_name, int flags, mode_t mode) {
+int openat64(int dir_fd, const char* path_name, int flags, mode_t mode) {
   if (!original_openat64) {
     original_openat64 = (open_at_type)(dlsym(RTLD_NEXT, "openat64"));
   }
@@ -230,35 +244,41 @@ int close(int fd) {
   return original_close(fd);
 }
 
-FILE *fopen(const char *path, const char *mode) {
+FILE* fopen(const char* path_name, const char *mode) {
   FILE *fp = nullptr;
   if (!original_fopen) {
     original_fopen = (fopen_type)(dlsym(RTLD_NEXT, "fopen"));
   }
   int fd = -1;
-  if((fp = original_fopen(path, mode)) != nullptr) {
+  if((fp = original_fopen(path_name, mode)) != nullptr) {
     if((fd = fileno(fp)) != -1) {
+      if (register_fd_callback) {
+        register_fd_callback(register_fd_callback_profile, fd, path_name);
+      }
       store_pageinfo(fd);
     }
   }
   return fp;
 }
 
-FILE *fopen64(const char *path, const char *mode) {
+FILE* fopen64(const char* path_name, const char *mode) {
     FILE *fp = nullptr;
     if (!original_fopen64) {
       original_fopen64 = (fopen_type)(dlsym(RTLD_NEXT, "fopen64"));
     }
     int fd = -1;
-    if((fp = original_fopen64(path, mode)) != nullptr) {
+    if((fp = original_fopen64(path_name, mode)) != nullptr) {
       if((fd = fileno(fp)) != -1) {
+        if (register_fd_callback) {
+          register_fd_callback(register_fd_callback_profile, fd, path_name);
+        }
         store_pageinfo(fd);
       }
     }
     return fp;
 }
 
-int fclose(FILE *fp) {
+int fclose(FILE* fp) {
   if (!original_fclose) {
     original_fclose = (fclose_type)(dlsym(RTLD_NEXT, "fclose"));
   }
@@ -269,9 +289,14 @@ int fclose(FILE *fp) {
   return EOF;
 }
 
-void fcache_count_set_callback(fcache_count_callback_type call, void* profile) {
-  callback = call;
-  callback_profile = profile;
+void fcache_count_set_log_callback(fcache_count_log_callback_type call, void* profile) {
+  log_callback = call;
+  log_callback_profile = profile;
+}
+
+void fcache_count_set_register_fd_callback(fcache_count_register_fd_callback_type call, void* profile) {
+  register_fd_callback = call;
+  register_fd_callback_profile = profile;
 }
 
 int insert_into_br_list(struct file_pageinfo *pi, struct byterange **brtail,
@@ -295,7 +320,7 @@ int insert_into_br_list(struct file_pageinfo *pi, struct byterange **brtail,
   return 1;
 }
 
-file_pageinfo* fd_get_pageinfo(int fd, struct file_pageinfo *pi) {
+file_pageinfo* fd_get_pageinfo(int fd, struct file_pageinfo* pi) {
   void* file;
   struct byterange* br = nullptr;
   struct stat st;
@@ -312,9 +337,6 @@ file_pageinfo* fd_get_pageinfo(int fd, struct file_pageinfo *pi) {
   }
   pi->size = st.st_size;
   pi->nr_pages = (st.st_size + PAGESIZE - 1) / PAGESIZE;
-
-  fprintf(stderr, "fd_get_pageinfo(fd=%d): st.st_size=%lld, nr_pages=%lld\n",
-          fd, (long long)st.st_size, (long long)pi->nr_pages);
 
   /* If size is 0, mmap() will fail. We'll keep the fd stored, anyway, to
    * make sure the newly written pages will be freed on close(). */
@@ -422,11 +444,8 @@ void store_pageinfo(int fd) {
   fds[fd].fd = fd;
   if (!fd_get_pageinfo(fd, &fds[fd])) {
     fds[fd].fd = -1;
-  } else {
-    fprintf(stderr, "store_pageinfo(fd=%d): pages in cache: %zd/%zd (%.1f%%)  [filesize=%.1fK, "
-      "pagesize=%dK]\n", fd, fds[fd].nr_pages_cached, fds[fd].nr_pages,
-      fds[fd].nr_pages == 0 ? 0 : (100.0 * fds[fd].nr_pages_cached / fds[fd].nr_pages),
-      1.0 * fds[fd].size / 1024, (int) PAGESIZE / 1024);
+  } else if (log_callback) {
+    log_callback(log_callback_profile, fds[fd]);
   }
   unlock_mutex(fd, &old_mask);
 }

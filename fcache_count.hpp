@@ -1,5 +1,5 @@
 /*******************************************************************************
- * fcache_count.cpp
+ * fcache_count.hpp
  *
  * Some parts are copied (and modified) from https://github.com/feh/nocache
  *
@@ -12,29 +12,19 @@
 #ifndef FCACHE_COUNT_HEADER
 #define FCACHE_COUNT_HEADER
 
-struct byterange {
-  size_t pos, len;
-  struct byterange *next;
-}; // struct byterange
+#include "common.hpp"
 
-struct file_pageinfo {
-  int fd;
-  off_t size;
-  size_t nr_pages;
-  size_t nr_pages_cached;
-  struct byterange *unmapped;
-}; // struct file_pageinfo
-
-using fcache_count_callback_type = void (*)(void* profile, const char* message);
-void fcache_count_set_callback(fcache_count_callback_type call, void* profile);
+using fcache_count_log_callback_type = void (*)(void* profile, const file_pageinfo& message);
+using fcache_count_register_fd_callback_type = void (*)(void* profile, int fd, const char* file_name);
+void fcache_count_set_log_callback(fcache_count_log_callback_type call, void* profile);
+void fcache_count_set_register_fd_callback(fcache_count_register_fd_callback_type call, void* profile);
 
 void init_mutexes();
 void free_unclaimed_pages(int fd);
-void fcache_count_set_callback(fcache_count_callback_type call, void* profile);
-int insert_into_br_list(struct file_pageinfo *pi, struct byterange **brtail,
+int insert_into_br_list(struct file_pageinfo *pi, struct byterange** brtail,
 	size_t pos, size_t len);
-file_pageinfo* fd_get_pageinfo(int fd, struct file_pageinfo *pi);
-void free_br_list(struct byterange **br);
+file_pageinfo* fd_get_pageinfo(int fd, struct file_pageinfo* pi);
+void free_br_list(struct byterange** br);
 void store_pageinfo(int fd);
 void free_unclaimed_pages(int fd);
 
