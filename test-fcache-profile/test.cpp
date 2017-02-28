@@ -1,3 +1,11 @@
+/*******************************************************************************
+ * test-fcache-profile.cpp
+ *
+ * Copyright (c) 2017 Florian Kurpicz <florian.kurpicz@tu-dortmund.de>
+ *
+ * All rights reserved. Published under the BSD-2 license in the LICENSE file.
+ ******************************************************************************/
+
 #include <cstdio>
 #include <fstream> 
 
@@ -40,3 +48,5 @@ int main() {
 
   return 0;
 }
+
+/******************************************************************************/

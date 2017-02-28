@@ -28,6 +28,12 @@
 
 #include "fcache_count.hpp"
 
+// #define FCACHE_DISABLED = 0
+
+#ifdef FCACHE_DISABLED
+  #include "fcache_disable.hpp"
+#endif
+
 static fcache_count_log_callback_type log_callback = nullptr;
 static fcache_count_register_fd_callback_type register_fd_callback = nullptr;
 static void* log_callback_profile = nullptr;
@@ -439,7 +445,9 @@ void store_pageinfo(int fd) {
 
   /* Hint we'll be using this file only once;
    * the Linux kernel will currently ignore this */
-  // fadv_noreuse(fd, 0, 0);
+#ifdef FCACHE_DISABLED
+  fadv_noreuse(fd, 0, 0);
+#endif
 
   fds[fd].fd = fd;
   if (!fd_get_pageinfo(fd, &fds[fd])) {
@@ -465,22 +473,28 @@ void free_unclaimed_pages(int fd) {
     return;
   }
 
-  // sync_if_writable(fd);
+#ifdef FCACHE_DISABLED
+  sync_if_writable(fd);
+#endif
 
   if(fstat(fd, &st) == -1) {
     unlock_mutex(fd, &old_mask);
     return;
   }
 
-  struct byterange *br;
+#ifdef FCACHE_DISABLED
+  struct byterange* br;
   for (br = fds[fd].unmapped; br; br = br->next) {
-      // fadv_dontneed(fd, br->pos, br->len, nr_fadvise);
+    fadv_dontneed(fd, br->pos, br->len, 1);  
   }
+#endif
 
   /* Has the file grown bigger? */
+#ifdef FCACHE_DISABLED
   if (st.st_size > fds[fd].size) {
-    // fadv_dontneed(fd, fds[fd].size, 0, nr_fadvise);
+    fadv_dontneed(fd, fds[fd].size, 0, 1);    
   }
+#endif
 
   free_br_list(&fds[fd].unmapped);
   fds[fd].fd = -1;

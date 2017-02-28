@@ -1,3 +1,11 @@
+/*******************************************************************************
+ * fcache_profile.hpp
+ *
+ * Copyright (c) 2017 Florian Kurpicz <florian.kurpicz@tu-dortmund.de>
+ *
+ * All rights reserved. Published under the BSD-2 license in the LICENSE file.
+ ******************************************************************************/
+
 #ifndef FCACHE_PROFILE
 #define FCACHE_PROFILE
 
@@ -22,7 +30,7 @@ public:
   }
 
   void log_message(const std::string& message) {
-    fprintf(stderr, "# log message: %s\n", message.c_str());
+    fprintf(log_file_, "# log message: %s\n", message.c_str());
   }
 
 private:
@@ -33,10 +41,10 @@ private:
       file_name = result->second;
     }
 
-    fprintf(stderr, "%s: pages in cache: %zd/%zd (%.1f%%)  [filesize=%.1fK, "
-      "]\n", file_name.c_str(), fpi.nr_pages_cached, fpi.nr_pages,
+    fprintf(log_file_, "%s: pages in cache: %zd/%zd (%.1f%%)  [filesize=%.1fK, "
+      "pagesize=%.1fK]\n", file_name.c_str(), fpi.nr_pages_cached, fpi.nr_pages,
       fpi.nr_pages == 0 ? 0 : (100.0 * fpi.nr_pages_cached / fpi.nr_pages),
-      1.0 * fpi.size / 1024/*, (int) PAGESIZE / 1024*/);
+      1.0 * fpi.size / 1024, ((1.0 * fpi.size) / fpi.nr_pages) / 1024);
   }
 
   void register_fd(const int fd, const std::string& file_name) {
@@ -64,3 +72,5 @@ private:
 }; // class fcache_profile
 
 #endif // FCACHE_PROFILE
+
+/******************************************************************************/

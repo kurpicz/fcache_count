@@ -14,10 +14,14 @@
 
 #include "common.hpp"
 
-using fcache_count_log_callback_type = void (*)(void* profile, const file_pageinfo& message);
-using fcache_count_register_fd_callback_type = void (*)(void* profile, int fd, const char* file_name);
-void fcache_count_set_log_callback(fcache_count_log_callback_type call, void* profile);
-void fcache_count_set_register_fd_callback(fcache_count_register_fd_callback_type call, void* profile);
+using fcache_count_log_callback_type =
+  void (*)(void* profile, const file_pageinfo& message);
+using fcache_count_register_fd_callback_type =
+  void (*)(void* profile, int fd, const char* file_name);
+void fcache_count_set_log_callback(
+  fcache_count_log_callback_type call,void* profile);
+void fcache_count_set_register_fd_callback(
+  fcache_count_register_fd_callback_type call, void* profile);
 
 void init_mutexes();
 void free_unclaimed_pages(int fd);
