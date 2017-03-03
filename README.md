@@ -18,5 +18,5 @@ Then compile your code (adding `fcache_count.o`) and linking the *dl* library (`
 For more details (especially regarding the logging) please look at the example we provide in the folder `test-fcache-profile`.
 
 ## Credits
-We took some code from [nocache](https://github.com/feh/nocache) (please notice the copyright in the files).
+We took some code from [nocache](https://github.com/feh/nocache) (please notice the copyright in the code and the license file).
 This project was also heavily influenced by [malloc_count](https://github.com/bingmann/malloc_count).
